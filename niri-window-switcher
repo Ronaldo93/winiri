@@ -1,0 +1,74 @@
+#!/bin/bash
+# Niri window switcher using fzf - grouped by workspace
+# Lists all windows grouped by workspace and focuses the selected one
+
+# Get workspaces and windows
+workspaces_json=$(niri msg --json workspaces)
+windows_json=$(niri msg --json windows)
+
+# Check if we have any windows
+if [ -z "$windows_json" ] || [ "$windows_json" = "[]" ]; then
+    echo "No windows found"
+    exit 1
+fi
+
+# Create temp files for workspace mapping
+declare -A ws_names
+declare -A ws_output
+
+# Build workspace name mapping
+while IFS= read -r ws; do
+    id=$(echo "$ws" | jq -r '.id')
+    idx=$(echo "$ws" | jq -r '.idx')
+    name=$(echo "$ws" | jq -r '.name')
+    is_active=$(echo "$ws" | jq -r '.is_active')
+    
+    # Use name if available, otherwise use workspace number (idx)
+    if [ -n "$name" ] && [ "$name" != "null" ]; then
+        display_name="$name"
+    else
+        display_name="$idx"
+    fi
+    
+    if [ "$is_active" = "true" ]; then
+        display_name="$display_name *"
+    fi
+    
+    ws_names["$id"]="$display_name"
+done < <(echo "$workspaces_json" | jq -c '.[]')
+
+# Build output grouped by workspace
+output=""
+current_ws=""
+
+while IFS= read -r win; do
+    ws_id=$(echo "$win" | jq -r '.workspace_id')
+    win_id=$(echo "$win" | jq -r '.id')
+    app_id=$(echo "$win" | jq -r '.app_id // "unknown"')
+    title=$(echo "$win" | jq -r '.title // "untitled"')
+    
+    ws_name="${ws_names[$ws_id]:-unknown}"
+    
+    # Add workspace header if changed
+    # if [ "$ws_name" != "$current_ws" ]; then
+    #     if [ -n "$current_ws" ]; then
+    #         output+=$'\n'
+    #     fi
+    #     output+="═══ $ws_name ═══"$'\n'
+    #     current_ws="$ws_name"
+    # fi
+    
+    # Add window line with ID for parsing
+    output+="  $win_id | [$app_id] $title"$'\n'
+done < <(echo "$windows_json" | jq -c '.[]' | sort -t':' -k3)
+
+# Present to fzf
+selected=$(echo -n "$output" | fzf --prompt="Focus window: " --height=50% --reverse --header="Select a window to focus" --no-info)
+
+# If a window was selected, focus it
+if [ -n "$selected" ] && [[ "$selected" != "═══"* ]]; then
+    window_id=$(echo "$selected" | awk '{print $1}')
+    if [ -n "$window_id" ]; then
+        niri msg action focus-window --id "$window_id"
+    fi
+fi
