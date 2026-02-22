@@ -2,7 +2,7 @@
 
 Usage:
 
-`./niri-window-switcher.sh`
+`./niri-window-switcher`
 
 Requirements: niri, jq, and fzf must be installed.
 You can bind this to a hotkey in your niri config, for example:
